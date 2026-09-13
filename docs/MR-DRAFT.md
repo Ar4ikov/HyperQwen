@@ -74,7 +74,7 @@ the 72k operator/logit oracle and the per position logit comparison are
 production dispatch call-counted; verdicts in docs/spec-decode-scratch-token-units.md);
 full length exactness is the same oracle's full-length legs; the shallow
 crossover floor moved from -16% to -1% (default sampling) / -3% (greedy) on
-`bench/real_rep.sh`, a short-prompt cost bought with a 3.6x deep-prompt gain;
+`bench/real_rep.sh`, a short-prompt cost bought with a deep-prompt decode gain of 1.3x to 2.5x on the native 3090 at 24k to 88k (the WSL2 4090 row at 88k read a larger multiple that does not reproduce in magnitude on the 3090);
 eager+captured+q=9 parity has its captured-path quality row (INT4_MQ_3D=0 vs 1,
 same 200 GSM8K rows at T=0, cold compile cache per arm: accuracy 0.950 both,
 perplexity 10.8102 vs 10.8135); and capture aware dual variant switching is

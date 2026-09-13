@@ -29,8 +29,9 @@ export VLLM_DFLASH2_LOOKUP=${LOOKUP:-1}
 export VLLM_INT4_MQ_3D=${INT4_MQ_3D:-1}
 # INT8_ACT=int8: the W4A8 Marlin path for prefill, the same knob start_qwen.sh has (docs/optimizations.md). On this
 # profile it lifts fresh prefill +42% at 24k tokens to +13% at 145k (2,765 / 1,884 / 1,246 / 835 tok/s against
-# 1,942 / 1,446 / 1,039 / 736 on a 4090, 200k max length) with decode unchanged; the quality trade is the documented
-# int8 one, so it stays opt-in here too. INT8_LAYERS narrows it the same way.
+# 1,942 / 1,446 / 1,039 / 736 on a 4090, 200k max length). It is a prefill knob: the paired 4090 repro measured
+# decode 8 to 13% lower and the KV pool 22% smaller with it on, and the quality trade is the documented int8 one,
+# so it stays opt-in here too. INT8_LAYERS narrows it the same way.
 INT8_ACT=${INT8_ACT-}
 INT8_LAYERS=${INT8_LAYERS-mlp|linear_attn|self_attn}
 [ -n "$INT8_ACT" ] && export VLLM_MARLIN_INPUT_DTYPE=$INT8_ACT
