@@ -1261,3 +1261,19 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     "Never time an instrumented boot" arrives here by a new route: the
     instrumentation does not have to be in the hot path to cost you the
     startup, it only has to be registered.
+
+57. **The fp8 split-KV verify route is sm89 and up, and `INT8_ACT=int8` does not
+    stack on it.** `patches/triton-spec-attn-fp8-kv.patch` lets the split-KV
+    verify kernel read vLLM's per-tensor fp8 cache, so `--kv-cache-dtype fp8`
+    can run with `TRITON_ATTN` on both the target and the drafter and keep FULL
+    CUDA graphs (the launch line, verbatim, is in `docs/long-context.md`; the
+    `"attention_backend":"TRITON_ATTN"` inside the speculative config is the
+    part that is easy to drop, and dropping it silently costs the FULL graphs).
+    Two limits. Triton has no fp8e4nv conversion on sm86, so on a 3090 the
+    route does not exist: the compiler refuses the kernel outright (gotcha 40
+    has the backend map), and `bench/test_spec_decode_fp8.py` skips there by
+    design rather than dying. And `INT8_ACT=int8` on the fp8 route is slow with
+    or without this patch (a Marlin variant choice, tracked separately), so do
+    not stack the two until the memory-pressure question behind it is
+    understood; the measured rows in `docs/long-context.md` are fp8 KV with
+    bf16 activations.
