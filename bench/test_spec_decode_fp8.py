@@ -1,8 +1,17 @@
 """fp8 path of the split-KV spec-decode attention: correctness against a dequantized reference and
 timing against the bf16 kernel and FA2 (bf16). Run inside the vLLM venv after applying patches/triton-spec-attn-fp8-kv.patch (sm89+):
   venv/bin/python bench/test_spec_decode_fp8.py"""
-import time, torch
+import sys, time, torch
+# Guards, the same two designed skips as bench/test_spec_decode_bigpool.py: Triton has no fp8e4nv conversion
+# below sm89 (a 3090 dies in the compiler instead of failing a check), and a kernel without the fp8 path has
+# no k_descale argument. Both exit 0 with a line saying so; anything else is a failure of the run.
+cap = torch.cuda.get_device_capability()
+if cap < (8, 9):
+    print(f"fp8: SKIP(by design): no fp8 conversion on this card (sm{cap[0]}{cap[1]}; needs sm89+)", flush=True); sys.exit(0)
 from vllm.v1.attention.ops.spec_decode_attn import SpecDecodeAttention
+import inspect
+if "k_descale" not in inspect.signature(SpecDecodeAttention.run).parameters:
+    print("fp8: SKIP(by design): this kernel has no fp8 path (no k_descale argument); apply patches/triton-spec-attn-fp8-kv.patch", flush=True); sys.exit(0)
 from vllm.vllm_flash_attn import flash_attn_varlen_func
 torch.manual_seed(0); dev = "cuda"
 Hq, Hkv, D, BS = 24, 4, 256, 432
