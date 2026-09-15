@@ -517,6 +517,26 @@ via `EXTRA_ARGS`:
 SPEC=dflash2 PREFIX_CACHE=1 EXTRA_ARGS="--tensor-parallel-size 2" bash single-user/start_qwen.sh
 ```
 
+**`--tensor-parallel-size 3` is not valid for this model.** The checkpoint's
+text config has 4 KV heads and 64 layers:
+
+```bash
+curl -sL https://huggingface.co/dbirks/Qwen3.8-27B-W4A16-AutoRound/raw/main/config.json \
+  | python3 -c "import json,sys; t=json.load(sys.stdin)['text_config']; print(t['num_key_value_heads'], t['num_hidden_layers'])"
+# 4 64
+```
+
+Tensor parallelism needs the KV-head count and the TP size to divide one
+another, and 4 and 3 do neither way; pipeline parallelism needs an even layer
+split, and 64 does not divide by 3. So on a three-card box the third card
+cannot join the engine — run a TP=2 engine on two cards plus a second
+standalone engine on the third
+([#104](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/104)), and if both
+serve containers share one host, set `VLLM_OFFLOAD_KEEP_SHM=1` on both: each
+launcher's stale-offload-region reaper only sees its own container's processes
+and would delete the other engine's live region
+([#33](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/33)).
+
 What the second card is worth is now measured, not assumed —
 [#40](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/40) ran a controlled
 1-vs-2×3090 A/B on this harness (same box, same install, PCIe 4.0 x8, **no
