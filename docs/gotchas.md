@@ -630,6 +630,37 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     finished-request store watermark clamp, #54288): with it the tier serves
     stored hits under `SPEC=mtp` and the cached count on a replay lands on the
     same block formula as the GPU path, one 832-token block more than before.
+    **Sizing the tier, and why a default boot can show it doing nothing.**
+    Residency has no gauge in 0.28.0: both `kv_offload_cpu_cache_usage_perc`
+    and its read twin count in-flight transfer pins (`num_used = allocated -
+    free - evictable`, and `complete_store()` marks a block evictable the
+    moment it lands), so a full tier reads 0.0 between transfers and a 0%
+    reading is not an idle tier — read `vllm:kv_offload_total_bytes_total`
+    and the external-prefix-cache hit counter instead. Size the tier from
+    blocks x tokens-per-block for YOUR arm, never from a GiB constant:
+    `blocks` = mmap bytes / bytes-per-block (the usage gauge quantises at
+    1/blocks, e.g. 0.02252... = 10/444), and `tokens-per-block` = distinct
+    tokens stored / `kv_offload_cpu_allocation_size_sum`. Measured on the
+    3090, `CTX=long` (fp8, MTP) at `--kv-offloading-size 12`: mmap
+    12,861,308,928 B over 444 blocks = 28,966,912 B per block; 367 blocks for
+    123,148 distinct tokens = ~336 tok/block; 444 x ~336 ~= **149k tokens**,
+    i.e. about ONE 150k session, not three. `CTX=huge` (KVarN) at the same
+    12 GiB is 110 x 2048 ~= 225k. Then read the GPU side off the SAME boot
+    log (`GPU KV cache size: N tokens`) and compare in TOKENS, not bytes: a
+    tier several times the pool in bytes can be smaller in tokens (86.2 KB
+    per tier token against 37.9 KB per pool token here, a 2.3x ratio), and a
+    tier smaller in tokens than the GPU prefix cache can never hold anything
+    the GPU cache has already dropped — which is the real reason a
+    default-pool 3x150k workload can show the tier doing nothing useful.
+    Capacity, not a scheduler veto. Both numbers must come from the same
+    boot: the pool is profiled per boot and moves ~1 GiB between a cold and a
+    warm compile cache (item 12), enough that a default `CTX=long` boot which
+    fits beside a tier one day refuses at KV sizing the next. Sized right,
+    the tier behaves as a high-churn working set rather than a resident
+    store: the reporter in
+    [#95](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/95) measured
+    658 GiB CPU->GPU, 541 GiB GPU->CPU and 15.95M external prefix hits
+    through a 12 GiB tier in ~3 h (dfein38347g).
     And when eviction probing, keep the resend prompt BYTE-identical: a
     two-token label difference shifts every block hash and manufactures a
     convincing, fake "per-request hash instability" (ask how we know).
