@@ -613,9 +613,16 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     from store while decoding; with dflash the flag now lands on the
     drafter's sliding-window group alone. Also: on bare-metal Linux the
     connector refuses this stack's default allocator
-    (`expandable_segments:True`) at config validation — run it with
-    `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False` (or the cumem
-    allocator), which the WSL2 branch of the launchers already defaults to.
+    (`expandable_segments:True`) at config validation. All three launchers
+    now default `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False` whenever
+    `EXTRA_ARGS` carries `--kv-offloading-size` or `--kv-transfer-config`
+    (and print a line saying so); an explicit `PYTORCH_CUDA_ALLOC_CONF` in
+    the environment still wins, so setting it to `True` by hand reproduces
+    the refusal. The MTP/EAGLE serve fixes are in the series as
+    `offload-mtp-serve.patch` (upstream #52771 and #52807 plus the
+    finished-request store watermark clamp, #54288): with it the tier serves
+    stored hits under `SPEC=mtp` and the cached count on a replay lands on the
+    same block formula as the GPU path, one 832-token block more than before.
     And when eviction probing, keep the resend prompt BYTE-identical: a
     two-token label difference shifts every block hash and manufactures a
     convincing, fake "per-request hash instability" (ask how we know).
