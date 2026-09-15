@@ -48,3 +48,4 @@ mamba-align-retire-null-gaps.patch
 offload-mtp-serve.patch
 engine-completion-log.patch
 engine-stall-sentinel.patch
+sse-keep-alive.patch

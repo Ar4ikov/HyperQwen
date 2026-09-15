@@ -1217,3 +1217,26 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     cleanup verifies green. The general rule is that a patch which creates a
     file makes that file part of what verification demands, so a patch should
     only create files it means to own.
+
+55. **A streaming response sends nothing during prefill, and a proxy in front
+    of the server closes the connection before the first token.** vLLM's SSE
+    stream is silent from the moment the request is accepted until the first
+    output token, so a long prefill looks like a dead socket to anything with
+    an idle read timeout — Bifrost's default is 120 s, and a cold 90K-token
+    prompt on this card prefills for ~105 s. The client sees a dropped
+    connection, not an error. `patches/sse-keep-alive.patch` (upstream vLLM
+    [#51034](https://github.com/vllm-project/vllm/pull/51034), backported to
+    0.28.0) adds `--sse-keep-alive-interval`, which emits a `: keep-alive`
+    comment line while the stream is idle; comment lines are part of SSE and
+    every conforming client ignores them.
+
+    `single-user/start_qwen.sh` sets it from `SSE_KEEP_ALIVE`, default 30 s —
+    **so every stream now carries a comment line every 30 seconds by default.**
+    That is deliberate (4x margin against a 120 s timeout) but it is not
+    nothing if you log raw SSE frames: measured on the reference 3090, an
+    18.2 s request emitted 18 comment lines at an interval of 1, and would
+    emit none at all at 30.
+    Set `SSE_KEEP_ALIVE=0` to turn the emission off, or `SSE_KEEP_ALIVE=`
+    (empty) to drop the flag entirely — which is also what you need if the
+    launcher is pointed at a vLLM tree that has not had the series applied,
+    since the flag only exists because the patch is in it.

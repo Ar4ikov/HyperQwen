@@ -79,6 +79,13 @@ fi
 MODEL=${MODEL:-$REPO/models/Qwen3.8-27B-W4A16-AutoRound}
 PORT=${PORT:-18020}
 MAX_SEQS=${MAX_SEQS:-}
+# Seconds between SSE ': keep-alive' comment lines on a streaming response, so
+# an idle stream survives a proxy's idle timeout during a long prefill (Bifrost
+# defaults to 120 s; 30 s clears it with a 4x margin). SSE_KEEP_ALIVE=0 passes
+# the flag with the interval vLLM reads as off; SSE_KEEP_ALIVE= (empty) drops
+# the flag entirely, which is what a vLLM tree WITHOUT patches/sse-keep-alive.patch
+# applied needs — the flag does not exist there, and the deploy tree drifts.
+SSE_KEEP_ALIVE=${SSE_KEEP_ALIVE-30}   # no colon: SSE_KEEP_ALIVE= keeps the empty value
 # INT8_ACT=int8 turns on the W4A8 Marlin path (weights stay int4, activations
 # quantized per token to int8, int8 tensor cores) for the layers INT8_LAYERS
 # selects — the same knob batch mode ships on by default. At batch size 1 it
@@ -737,4 +744,5 @@ exec venv/bin/vllm serve "$MODEL" \
   --enable-prompt-tokens-details \
   "${METRICS_ARGS[@]}" \
   "${TOOL_ARGS[@]}" \
-  ${EXTRA_ARGS}
+  ${EXTRA_ARGS} \
+  ${SSE_KEEP_ALIVE:+--sse-keep-alive-interval $SSE_KEEP_ALIVE}
