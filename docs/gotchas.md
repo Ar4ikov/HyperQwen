@@ -647,12 +647,58 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
        field; this is the equivalent.) Server-side,
        `vllm:prefix_cache_queries` / `vllm:prefix_cache_hits` on `/metrics`
        give the same as counters.
-    2. **Know the floor.** Hits are counted in whole hash units and the
-       recurrent state resumes only at aligned boundaries
-       (`--mamba-cache-mode align`), so the hit length truncates DOWN to a
-       multiple of the unit — a prompt shorter than one unit can never hit,
-       and a shared prefix pays up to one unit of recompute past the match.
-       This is a fixed tax, not the 100%-miss failure mode.
+    2. **Know the floor, and it has a closed form.** Hits are counted in
+       whole hash units and the recurrent state resumes only at aligned
+       boundaries (`--mamba-cache-mode align`), so the hit length truncates
+       DOWN to a multiple of the hybrid attention block `B` — and the final
+       block of a cached request is never served, because its recurrent
+       state was never checkpointed at that boundary. Measured on the box
+       over two block sizes ([#102](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/102)):
+
+           cached_tokens = max(0, floor(n_prefix / B) - 1) * B
+
+       where `n_prefix` is the length of the EARLIER, cached request — not
+       the replay's own `prompt_tokens`. Round lengths cannot tell those two
+       apart; straddle lengths can. At B=480, a 958-token prompt replayed at
+       961 tokens gives `cached_tokens` **0**, where `floor(961/480)-1`
+       would predict 480; 1438 replayed at 1441 gives 480, not 960. So a
+       prompt shorter than 2B can never hit at all, and a shared prefix pays
+       up to two blocks of recompute past the match. This is a fixed tax,
+       not the 100%-miss failure mode.
+
+       **`B` is not a constant — read it from the boot log.** Every launch
+       prints it:
+
+           INFO [interface.py:928] Setting attention block size to 480 tokens
+                to ensure that attention page size is >= mamba page size.
+           INFO [interface.py:952] Padding mamba page size by 1.27% to ensure
+                that mamba page size and attention page size are exactly equal.
+
+       `B` is whatever makes one attention page cover one mamba page:
+       `B = 16 * ceil(mamba_page / (16 * attn_page_1_token))`. On this model
+       `attn_page_1_token` is 4096 B at bf16 KV, 2080 B at
+       `int8_per_token_head` and 2048 B at fp8, and — the part that surprises
+       people — `mamba_page` includes the speculative drafter's state, so it
+       grows with the number of draft tokens: 1,634,304 B with no drafter
+       plus 20,480 B per draft token. That makes `B` a function of
+       `DFLASH_TOKENS`, not of the machine. Measured and reproduced pairs:
+
+       | profile | KV dtype | drafts | B | mamba padding |
+       |---|---|---|---|---|
+       | CTX=fast (production) | bf16 | 15 | 480 | 1.27% |
+       | CTX=fast | bf16 | 7 | 448 | 3.23% |
+       | SPEC=dflash2 CTX=long | int8_per_token_head | 7 | 864 | 1.09% |
+       | SPEC=mtp CTX=long | fp8 | 3 | 832 | 0.48% |
+
+       Rows 1 and 3 are boot lines from this box; rows 2 and 4 are the same
+       formula evaluated against this box's own config (no boot) and they
+       reproduce a contributor's boot lines on other 3090s to the last digit,
+       padding percentage included. That is the point: two boxes running the
+       "same" profile print different `B` purely because their
+       `DFLASH_TOKENS` differ (480 here at 15, 448 there at 7) — nothing
+       about the silicon, the build or the int8 prefill path is involved.
+       The contributor reports 448 and 832 stable from 0.28 to 0.29. Never
+       hard-code `B` into a client's cache arithmetic — read the boot line.
     3. **Byte-identity is over the RENDERED prompt.** What the cache hashes
        is the chat-templated token stream: system prompt + tool definitions +
        every message, in order. One changed byte at position P invalidates
