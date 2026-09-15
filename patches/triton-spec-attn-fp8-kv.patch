@@ -53,9 +53,7 @@ os.environ read (review of #90).
 diff --git a/envs.py b/envs.py
 --- a/envs.py
 +++ b/envs.py
-@@ -197,7 +197,9 @@
-     VLLM_SPEC_DECODE_ATTN: bool = False
-     VLLM_DRAFT_TOPK_TOPP: bool = True
+@@ -199,6 +199,8 @@
      # syv patch: int4 multi-query 3D verify switch and its debug print (same reason)
      VLLM_INT4_MQ_3D: bool = False
      VLLM_INT4_MQ_3D_DEBUG: bool = False
@@ -63,8 +61,8 @@ diff --git a/envs.py b/envs.py
 +    VLLM_SPEC_ATTN_DEBUG: bool = False
      # GiB of vision-tower weights to keep in pinned host memory; 0 disables.
      VLLM_VISION_CPU_OFFLOAD_GB: float = 0.0
-@@ -1551,7 +1553,8 @@
-     "VLLM_SPEC_DECODE_ATTN": lambda: os.environ.get("VLLM_SPEC_DECODE_ATTN", "0") == "1",
+     VLLM_HUMMING_MOE_GEMM_TYPE: Literal["indexed", "grouped", "auto"] | None = None
+@@ -1552,6 +1554,7 @@
      "VLLM_DRAFT_TOPK_TOPP": lambda: os.environ.get("VLLM_DRAFT_TOPK_TOPP", "1") == "1",
      "VLLM_INT4_MQ_3D": lambda: os.environ.get("VLLM_INT4_MQ_3D", "0") == "1",
      "VLLM_INT4_MQ_3D_DEBUG": lambda: os.environ.get("VLLM_INT4_MQ_3D_DEBUG", "0") == "1",
