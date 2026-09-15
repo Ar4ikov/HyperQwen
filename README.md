@@ -517,6 +517,43 @@ via `EXTRA_ARGS`:
 SPEC=dflash2 PREFIX_CACHE=1 EXTRA_ARGS="--tensor-parallel-size 2" bash single-user/start_qwen.sh
 ```
 
+Under Docker, the same two knobs live in `.env` — `GPU_COUNT` says how many
+cards the container gets, `EXTRA_ARGS` says how many the engine uses, and
+nothing in `docker-compose.yml` needs editing:
+
+```
+GPU_COUNT=2
+EXTRA_ARGS="--tensor-parallel-size 2 --language-model-only"
+```
+
+`GPU_COUNT` defaults to 1, which is *the first card the runtime enumerates* —
+GPU 0, not necessarily the card you meant. On a mixed box, expose them all and
+pin inside the container with `GPU_COUNT=all` plus `CUDA_VISIBLE_DEVICES=1,2`
+(the device reservation decides what is visible, so `NVIDIA_VISIBLE_DEVICES`
+in `.env` alone was not enough; `CUDA_VISIBLE_DEVICES` is read inside the
+container and is what gotcha 53 recommends).
+
+**Pin the KV pool before you measure anything, or before you trim `MAX_LEN`
+until the OOMs stop.** Under `--tensor-parallel-size > 1` the launcher
+deliberately skips the single-card `KV_MEM` pin (below), and `SPEC=mtp` has no
+profile pin at all — so the pool is sized from `GPU_UTIL`, and the headroom it
+is carved out of moves by ~0.92 GiB depending on whether the torch.compile
+cache was warm (`docs/gotchas.md` 48). That is the "booted at 146k yesterday,
+OOMs today" failure. To pin it, boot once at a context that works and read the
+two lines the engine prints:
+
+```bash
+docker compose logs single | grep -E "Available KV cache memory|GPU KV cache size"
+# INFO ... Available KV cache memory: 3.36 GiB
+# INFO ... GPU KV cache size: 161,280 tokens
+```
+
+then put a byte count a little under that `GiB` figure into `.env` as
+`KV_MEM=` (3.36 GiB ≈ 3607772528 bytes; round down). `KV_MEM` overrides the
+TP skip — the launcher only declines to pin one *for* you. A pinned pool
+either fits at boot or refuses at boot, instead of OOMing on the first
+request, and it is the only way two benchmark arms are comparable.
+
 What the second card is worth is now measured, not assumed —
 [#40](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/40) ran a controlled
 1-vs-2×3090 A/B on this harness (same box, same install, PCIe 4.0 x8, **no
