@@ -30,10 +30,14 @@
 #   both measured -- so this tier runs FlashInfer with no A/B possible, and
 #   issue #34 tracks a deterministic Xid-31 MMU write-fault seen twice on one
 #   3090 under fp8+MTP+prefix caching at ~28-34k context. The flashinfer-free
-#   fallback is the int8 tier (gotcha 44): what SPEC=dflash2 CTX=long already
+#   fallback is the int8 tier (gotcha 40): what SPEC=dflash2 CTX=long already
 #   ships, or for mtp: VLLM_SPEC_DECODE_ATTN=1 EXTRA_ARGS="--attention-backend
 #   =TRITON_ATTN --kv-cache-dtype=int8_per_token_head" at ~25% wall cost at
-#   depth (23.7 vs 18.9 s for 17.9k in + 256 out, measured).
+#   depth (23.7 vs 18.9 s for 17.9k in + 256 out, measured). At chat length
+#   that escape is +2.5% end-to-end and quality-neutral, but it costs 16% of
+#   the KV pool and decays hard past 25k (-34% decode / -44% prefill at 60k);
+#   SPEC=dflash2 CTX=fast is +31% over it at C1. Use it as the #34 fallback,
+#   not as the fast path. Numbers in gotcha 40.
 # CTX=huge: KVarN 4/2-bit KV cache (kvarn/), 200k context with MTP, at roughly
 #   half the decode rate past 100k — see below and docs/long-context.md.
 #

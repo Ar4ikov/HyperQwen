@@ -769,10 +769,57 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     `VLLM_SPEC_DECODE_ATTN=1 EXTRA_ARGS="--attention-backend=TRITON_ATTN
     --kv-cache-dtype=int8_per_token_head"`. Measured cost on the reference
     box: 17.9k in + 256 out takes 23.7 s against fp8/FlashInfer's 18.9
-    (~25% wall at that depth, mostly Triton prefill); in exchange the same
-    pinned pool holds more tokens at int8's geometry. The default stays
-    fp8/FlashInfer: two faults on one box do not justify a 25% tax on every
+    (~25% wall at that depth, mostly Triton prefill). The default stays
+    fp8/FlashInfer: two faults on one box do not justify that tax on every
     other box, but you should know which combination you are running.
+
+    **What the escape actually buys and costs, measured** (reference 3090,
+    250 W, vLLM 0.28.0, `SPEC=mtp CTX=long PREFIX_CACHE=1 GPU_UTIL=0.93
+    MAX_SEQS=4 MAX_LEN=120000`, warm medians of 3 on `bench/real_rep.sh`,
+    C1 = 8 realistic prompts x 1024 out, concurrency 1):
+
+    | arm | decode tok/s | ms/step | tok/step | KV pool | GSM8K n=200 | PPL all |
+    |---|---|---|---|---|---|---|
+    | stock fp8 / FlashInfer / PIECEWISE | 101.1 | 27.2 | 2.68 | 172,500 | 0.960 | 8.2362 |
+    | int8 / TRITON_ATTN / FULL graphs | 103.7 | 25.4 | 2.57 | 145,030 | 0.965 | 8.2375 |
+
+    Three things to take from that. (a) The win at chat length is **+2.5%
+    end-to-end**, not the +6% a step-time number alone suggests: dropping the
+    spec-decode CUDA-graph downgrade really is worth −6.6% step time
+    (27.2 → 25.4 ms), but int8 KV gives ~4% of it straight back in MTP
+    acceptance (2.68 → 2.57 tok/step). Quote step time as step time.
+    (b) It is **quality-neutral** — GSM8K 96.5 vs 96.0 (n=200, SE ≈ 1.3 pt,
+    i.e. indistinguishable) and PPL +0.02%. Unlike int8 *activations*, int8
+    KV costs no accuracy here. (c) It **costs pool, it does not save it**:
+    145,030 vs 172,500 tokens, −15.9% at this geometry (per-token-head
+    scales plus the FULL-decode-graph capture), the opposite sign of what an
+    earlier version of this entry claimed.
+
+    **Do not reach for it as the fast path.** The same C1 row under
+    `SPEC=dflash2 CTX=fast` (FLASH_ATTN, bf16 KV, FULL graphs, 68,605-token
+    pool) reads 135.5 decode tok/s / 3.49 tok/step at the same 26.6 ms/step
+    — **+31% over the int8 escape**, all of it acceptance. If your work fits
+    64k, that is the answer; the int8 tier is the #34 fallback and the
+    `SPEC=mtp` + depth route, not a performance recommendation.
+
+    **And it decays with depth.** Salted prompts (`cached_tokens = 0`), 256
+    out, greedy, stock vs int8 escape: equal at 8K (81.7 / 82.9 decode),
+    −22% decode at 25K (80.3 / 62.7), −34% decode and −44% fresh prefill at
+    60K (70.7 / 46.7 and 872 / 490 tok/s), with TTFT 68.9 → 122.6 s at 60K.
+    A WSL2 3090 contributor carried the same curve to 90K (stock ~80 decode
+    / 878 prefill, escape 46.3 / 355) while stock stayed flat from 25K out.
+    So: **stock fp8 FlashInfer for depth, the int8 escape only for
+    short-context decode-heavy work or when #34 forces it.**
+
+    **On sm89+ you do not have to give up the fp8 pool.** 0.28's
+    `_create_draft_vllm_config` deliberately does not inherit the target's
+    attention backend into the proposer, so the knob is the *speculative
+    config's own* `attention_backend` field — put TRITON_ATTN there, leave
+    the target on fp8/FlashInfer, and the downgrade goes away with the pool
+    intact. Unreachable on sm86: Triton refuses fp8 KV below SM89
+    ("native FP8 (fp8e4nv) requires SM89+"), so int8 is the only
+    flashinfer-free option on a 3090. Reported and verified on a 4090 by a
+    contributor ([#87](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/87)).
 41. **On a low-RAM host, don't let the stock loader race page-cache eviction —
     stream the weights.** A 16 GB host (~10 GiB actually free) died loading the
     15.9 GiB checkpoint at shard 5/8
