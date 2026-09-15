@@ -153,8 +153,8 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     block 880) was silently reading the wrong memory for any request placed
     above that id (issue #86, a 64 GB card; a 24 GB card never gets there).
     The one `blk.to(tl.int64)` cast fixes it, `bench/test_spec_decode_bigpool.py`
-    forces the shape on any card, and the same pattern in the int8 prefill
-    kernel has the same fix and its own test.
+    forces the shape on any card. The int8 prefill kernel carries the same
+    pattern; its cast and test are pending in #109.
 13. **Greedy is not deterministic across drafter configs.** The target rounds
     differently when it verifies 5 tokens vs 1, so a different drafter changes
     the generated text at near-ties and the 8-prompt acceptance numbers move
