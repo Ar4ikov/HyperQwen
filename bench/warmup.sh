@@ -2,14 +2,17 @@
 # Post-boot serving warmup: exercise the serving path (decode, speculative
 # verify, small and concurrent batches) before production traffic.
 #
-# The launcher's boot-time profile runs only profiling dummies, so a cold
-# Triton cache may still compile serving-path variants on the first real
-# request (gotchas 8, 39, 50). This script spends that cost in a controlled
+# The launcher's boot-time profile runs only profiling dummies, so the first
+# real request still pays the first-batch transient allocation (gotcha 35) and
+# may compile serving-path Triton variants (gotcha 45's scope note: three
+# kernels still JIT in-request on the current production profile). This
+# script spends that cost in a controlled
 # pass: one small request first (decode + speculative-verify capture), then a
 # larger concurrent batch (the multi-sequence verify path).
 #
-# Exits 1 if the server is not healthy or any pass fails, so the serving
-# wrapper (single-user/qwen-server.sh) treats it as a failed boot.
+# Exits 1 if the server is not healthy or any pass fails. The serving wrapper
+# (single-user/qwen-server.sh) logs that and serves anyway; a failed warmup is
+# not a failed boot.
 #
 #   bash bench/warmup.sh             # 127.0.0.1:18020, the launcher's model
 #   PORT=18021 bash bench/warmup.sh  # a different port
