@@ -108,15 +108,7 @@ diff --git a/v1/attention/backends/flash_attn.py b/v1/attention/backends/flash_a
 diff --git a/v1/attention/backends/triton_attn.py b/v1/attention/backends/triton_attn.py
 --- a/v1/attention/backends/triton_attn.py
 +++ b/v1/attention/backends/triton_attn.py
-@@ -5,6 +5,7 @@
- from dataclasses import dataclass, replace
- from typing import ClassVar
- 
-+import os
- import torch
- 
- import vllm.envs as envs
-@@ -45,6 +46,7 @@
+@@ -45,6 +45,7 @@
      _spec_attn_enabled,
      _spec_attn_qmax,
      _spec_attn_run,
@@ -124,7 +116,7 @@ diff --git a/v1/attention/backends/triton_attn.py b/v1/attention/backends/triton
  )
  from vllm.v1.kv_cache_interface import (
      AttentionSpec,
-@@ -915,10 +917,31 @@
+@@ -915,10 +916,31 @@
          # int8 per-token-head only: the kernel folds the per-(token, head) scales in after
          # each dot, which is exact because they are constant along the head dim. The
          # drafter's own sliding-window layers are excluded by the window test below.
@@ -158,7 +150,7 @@ diff --git a/v1/attention/backends/triton_attn.py b/v1/attention/backends/triton
              and 1 < max_seqlen_q <= _spec_attn_qmax(self.num_heads // self.num_kv_heads)
              and attn_metadata.causal
              and (self.sliding_window is None or self.sliding_window == (-1, -1))
-@@ -930,6 +953,25 @@
+@@ -930,6 +952,25 @@
              and attn_metadata.rswa_prefix_lens is None
              and output_scale is None
          ):
