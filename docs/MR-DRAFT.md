@@ -22,9 +22,12 @@ What it carries:
 2. **A one flag fix for prefix caching going dead** on int4 KV + DFlash2
    (`--prefix-match-unit 848`), with the analysis of why it dies.
 3. **An int4 attention kernel for speculative decoding**
-   (`patches/spec-decode-int4-kv-mq3d.patch`), opt in via `VLLM_INT4_MQ_3D=1`.
-   About 3.3x end to end on deep int4 spec decode. It defaults off, and section
-   3 lists the tests it still owes before it earns default on.
+   (`patches/spec-decode-int4-kv-mq3d.patch`), on by default in
+   `single-user/alternative.sh` (`INT4_MQ_3D=0` restores the 2D verify).
+   1.3x to 2.5x decode on a native 3090 at 24k to 88k; the ~3.3x end to end
+   figure elsewhere in this document is a 4090/WSL2 row and does not reproduce
+   in magnitude on the 3090. Section 3 carries the check ledger and the one
+   item still open.
 4. **A measurement correction** that matters to anyone benchmarking this stack
    over SSE. It reversed one of our own early conclusions.
 5. **Operating notes**: what actually stays cached at depth, which settings

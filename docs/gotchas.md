@@ -1093,3 +1093,24 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     cleanup verifies green. The general rule is that a patch which creates a
     file makes that file part of what verification demands, so a patch should
     only create files it means to own.
+
+55. **Registering an env var in vLLM's `envs.py` puts it in the torch.compile
+    cache key, so `VLLM_INT4_MQ_3D_DEBUG=1` now recompiles from cold.**
+    `patches/int4-mq3d-envs.patch`
+    ([#93](https://github.com/syv-ai/qwen38-27b-rtx3090/pull/93)) registers
+    `VLLM_INT4_MQ_3D` and `VLLM_INT4_MQ_3D_DEBUG`. That is not cosmetic:
+    `vllm/envs.py:compile_factors()` starts from every known vLLM env var,
+    drops only the names in its `ignored_factors` set, and hashes the rest;
+    `vllm/compilation/backends.py:1031-1066` folds that hash into the compile
+    cache directory key. Neither new knob is in `ignored_factors`, so each
+    value now selects its own compile cache.
+
+    Two consequences. The good one: an A/B of `INT4_MQ_3D=0` against `=1` on a
+    warm cache is no longer a stale-graph trap, and the per-arm
+    `rm -rf ~/.cache/vllm/torch_compile_cache` that the #93 review had to do by
+    hand is no longer required. The one to watch: a boot with
+    `VLLM_INT4_MQ_3D_DEBUG=1` has a different cache key from production, so it
+    compiles cold and must never be timed against a warm production boot.
+    "Never time an instrumented boot" arrives here by a new route: the
+    instrumentation does not have to be in the hot path to cost you the
+    startup, it only has to be registered.
