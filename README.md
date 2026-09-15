@@ -541,12 +541,31 @@ NVLink**, 275 W):
   [#7](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/7)'s NVLink box at
   330 W and #40's PCIe-x8 box at 275 W land within a few percent of each other
   at C1.
+- **Past two cards, or on a consumer board with the cards on separate PCIe root
+  ports, you may need `NCCL_P2P_LEVEL=SYS`** and
+  `EXTRA_ARGS="--disable-custom-all-reduce"`. Reported from a 4x RTX 5060 Ti box
+  on a community-patched P2P driver
+  ([#105](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/105)): NCCL would
+  not bring up peer-to-peer across four separate root ports until P2P was forced
+  down to `SYS`, and vLLM's custom all-reduce faulted on that driver even at
+  TP=2. Neither is reproducible on this repo's single-card box, so treat both as
+  field reports, not as defaults — try TP first without them.
+
+```bash
+NCCL_P2P_LEVEL=SYS SPEC=dflash2 PREFIX_CACHE=1 \
+  EXTRA_ARGS="--tensor-parallel-size 4 --disable-custom-all-reduce" \
+  bash single-user/start_qwen.sh
+```
 
 Also reported working: **2× RTX 5060 Ti 16 GB**
 ([#22](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/22)) — the "would
-not fit on one card" case. The graph budget and `MAX_SEQS` defaults are still
-single-card calibrations; more A/Bs like #40's are the most useful numbers you
-can send.
+not fit on one card" case — and **4× RTX 5060 Ti 16 GB** (TP4, sm120, PCIe 4.0
+x8, 180 W, community-patched P2P driver,
+[#105](https://github.com/syv-ai/qwen38-27b-rtx3090/issues/105)). The tok/s
+numbers in #105 are not quoted here: its two arms moved drafter, KV dtype and
+prefix cache together, so the ratio is a profile delta rather than a drafter
+delta. The graph budget and `MAX_SEQS` defaults are still single-card
+calibrations; more A/Bs like #40's are the most useful numbers you can send.
 
 ## Benchmarks
 
@@ -755,6 +774,16 @@ venv/bin/pip install vllm==0.28.0 huggingface_hub hf_transfer ninja \
 # FLASHINFER_DISABLE_VERSION_CHECK=1, which the launchers export. Do not fix the
 # mismatch by downgrading flashinfer-python: that drags torch back and breaks
 # vLLM's C extension.
+#
+# On the venv path you also want the CUDA curand *headers*. vLLM's DFlash2
+# sampling path JIT-compiles a FlashInfer kernel that includes curand.h; without
+# the headers the build fails with "fatal error: curand.h: No such file or
+# directory" and it *silently falls back* -- you get correct output at a lower
+# rate, not an error. A 4x 5060 Ti reporter measured 192.9 -> 202.1 tok/s
+# (+4.8%, step 18.4 -> 17.6 ms) just from installing them (#105). The Docker
+# path already covers this (Dockerfile:18). On Ubuntu with the CUDA repo,
+# matching your CUDA minor:
+#   sudo apt-get install -y libcurand-dev-13-0   # or libcurand-dev-13-3, etc.
 
 # model, ~19.5 GB
 HF_XET_HIGH_PERFORMANCE=1 venv/bin/hf download \
