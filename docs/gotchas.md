@@ -147,7 +147,14 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     KV only) is a 180-line Triton fix. Watch its query cap: the kernel used to
     handle at most `BLOCK_M / (heads per kv head)` = 10 query tokens and fall
     back silently past that, which doubled the step at 25k context the moment
-    the verify block grew to 16. It now tiles the query rows instead.
+    the verify block grew to 16. It now tiles the query rows instead. And
+    watch the pool size: until #91 the kernel multiplied the block id by the
+    cache stride in int32, so a pool of more than about 2,383 blocks (bf16,
+    block 880) was silently reading the wrong memory for any request placed
+    above that id (issue #86, a 64 GB card; a 24 GB card never gets there).
+    The one `blk.to(tl.int64)` cast fixes it, `bench/test_spec_decode_bigpool.py`
+    forces the shape on any card. The int8 prefill kernel carries the same
+    pattern; its cast and test are pending in #109.
 13. **Greedy is not deterministic across drafter configs.** The target rounds
     differently when it verifies 5 tokens vs 1, so a different drafter changes
     the generated text at near-ties and the 8-prompt acceptance numbers move
@@ -788,7 +795,27 @@ Things that each cost us hours, in rough order of pain. Worth skimming before yo
     lands on the conversation's own attention tail instead, which breaks
     the same hit from the other side. If between-turn traffic exceeds the
     whole free pool, nothing survives by policy; that regime needs a
-    bigger `KV_MEM`, not a smarter queue.
+    bigger `KV_MEM`, not a smarter queue. A second align-mode cost, fixed
+    since #101 (`patches/mamba-align-retire-null-gaps.patch`, upstream
+    #55450): a long prefill leaves null gaps between the state snapshots
+    awaiting retirement, and the base block remover stopped at the first
+    gap, so every older state stayed allocated until the request ended. The
+    maintainer's per-request counter of live non-null state blocks (inside
+    `remove_skipped_blocks`, on the repo's reference 3090, #101 review) read
+    up to 16 before the patch and 5 with it on every request; on that box
+    peak pool usage during a fresh 20k-token prefill fell 40 percent on
+    `SPEC=mtp CTX=long` and 21 to 23 percent where a large cached prefix
+    dominated the pool. On a second native 3090 and a WSL2 box, with the
+    pool pinned identical across arms, the peak fell 30 to 50 percent across
+    14k to 56k-token prefills at 0.28 and 0.29 (the reduction grows with
+    depth and is smaller on 0.29, which leaks less before the fix). No gap
+    forms on `CTX=fast` with DFlash2, so the fix is inert there: on the
+    maintainer's production profile the sampled peak agreed to four decimals
+    across 20 requests with and without it (#101 review). The win is
+    mtp/long shaped. One note for anyone
+    editing that patch file: it carries blank context lines that are a single
+    space, and a trailing-whitespace trim turns it into a malformed patch that
+    `git apply --check` rejects.
 45. **First-request Triton compiles on a fresh boot came from four separate
     warmup gaps, and the last one is invisible without logging what Triton
     specialises on.** Issue #48's fingerprint — a stall in the first large
