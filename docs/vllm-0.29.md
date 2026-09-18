@@ -1,0 +1,193 @@
+# The vLLM 0.29.0 pin
+
+What the move from 0.28.0 to 0.29.0 changed in this repo, and what was re-measured.
+
+[← back to the main README](../README.md)
+
+## Dependencies
+
+`vllm==0.29.0` and `huggingface_hub==1.28.0` (0.29 requires it; 1.27 conflicts). torch 2.13.0 and
+compressed-tensors 0.17.0 are unchanged. `verify.sh` checks the 0.29.0 pin.
+
+## Patch series
+
+Retired, because upstream carries the change:
+
+- `vllm-pr54282-draft-gumbel-salt.patch` (in 0.29.0)
+- `xgrammar-spec-terminated.patch` (in 0.29.0)
+- the graph-memory reserve hunk of `hybrid-kv-groups-v2-cudagraph.patch` (0.29 profiles graph memory
+  natively; the kv_cache_utils hunks stay)
+- the padded-page view hunk of `int4-kv-per-token-head.patch` (0.29's layout strides cover it; the
+  triton kernel hunks stay)
+
+Regenerated against the 0.29 tree, same behaviour:
+
+- `dflash2-prewarm.patch` (the launch path gained the context-parallel arguments)
+- `dflash2-lookup-drafting.patch` (32 hunks; import placement and the selector-walk anchor moved)
+
+Carried from #100's branch: the launcher defaults `expandable_segments` off when a KV connector is
+configured. Main never had it, so the offload profile cannot boot on a native box from main (vLLM refuses a
+KV connector under the VMM allocator); WSL2 does not see it because its default is already off.
+
+Carried after the port, because the 0.29.0 tag does not have them and the fork's open PRs do (#100, #101):
+
+- `offload-mtp-serve.patch` (upstream #52771 and #52807, with the finished-request store watermark clamp):
+  all seven hunks apply to the 0.29 tree unchanged. With it the offload profile serves stored hits under
+  MTP/EAGLE on 0.29 as it does on the #100 branch; `bench/replay_offload_serve.py` is the oracle.
+- `mamba-align-retire-null-gaps.patch` (upstream #55450): the `_remove_blocks_in_range` override applies
+  unchanged; the field init and the free-path pop are re-anchored around 0.29's `_num_checkpoint_blocks`.
+  What it buys is peak pool pressure during long align-mode prefills (about one pool token per prompt token
+  on 0.28, both boxes); the long profile's peak rows are the check.
+
+Both are on the fork branch as commits (`cpuchip/vllm` `qwen38/0.29` at 1bedc9ecb) and exported from there,
+so a pin that carries the upstream change retires the file by dropping the commit.
+
+Every other file in `patches/` was regenerated the same way in this port's last pass. Before that, the shipped
+0.29 image placed nine of them by fuzz (GNU patch's default of two lines of slack when the context does not
+match: hybrid-sw-block-promote, mamba-align-checkpoint-order, offload-dflash-eagle-groups, offload-wsl2-devptr,
+spec-decode-attn, spec-sampler-prewarm, speed-knobs-envs, prefill-attn-int8 (then named triton-prefill-attn-int8), vision-tower-cpu-offload;
+found by replaying the apply loop against a pristine wheel on the native 3090), and nothing reported it because the
+check counted fuzz and offset under one word. The files now apply to v0.29.0 with exact context (30 clean, 1
+at an offset, 0 with fuzz), the tree they produce is byte-identical to the fork branch, and both the Dockerfile
+and `check_vllm_series.sh` run `patch --fuzz 0`, so the next drift fails the build and names the patch.
+The two `kvarn/` files are exported from the fork the same way, from commits that sit after the whole
+series (the order `kvarn/install.sh` applies them in), so they apply at `--fuzz 0` too; before this pass four
+of their hunks landed by fuzz behind the series and the installer's `|| true` would have hidden a rejected
+hunk in any file without a `port(kvarn-v2)` marker. The installer now applies at `--fuzz 0` and stops on
+a rejected hunk.
+
+Every knob the launchers export is registered in `envs.py` and read through `envs` (`speed-knobs-envs.patch`
+carries the registry: `VLLM_PREFILL_ATTN`, `VLLM_SPEC_DECODE_ATTN_QMAX`, the `VLLM_DFLASH2_*` lookup and chain
+family, `VLLM_SPEC_DECODE_ATTN`, `VLLM_SPEC_ATTN_BLOCK_M`, `VLLM_INT4_MQ_3D` and its debug switch,
+`VLLM_MAMBA_ALIGN_KEEP_CHECKPOINTS`, `VLLM_DRAFT_TEMP_SCALE`, `VLLM_MARLIN_REPACK_STAGED`, and the Marlin int8 and tune
+knobs that were registered but still read raw); a boot on the production line prints no "Unknown vLLM environment
+variable detected" line, and no fork knob is read with a raw `os.environ` anywhere in the tree.
+
+The KVarN modules under `kvarn/` read 20 knobs of their own (`KVARN_*`, Huawei CSL's names, one of them
+`KVARN_POOL_MEM_FRAC` exported by both launchers); they are registered in `envs.py` under those names by
+`kvarn-0.29.0.patch` and read through `envs` at all 25 sites, with the same defaults and the same
+present-or-absent semantics where the reader branches on presence. One limit stays: vLLM's "Unknown vLLM
+environment variable" warning fires only for names that start `VLLM_`, so a misspelt `KVARN_` knob is still
+silent. Renaming them `VLLM_KVARN_*` would close that and diverge from KVarN's own documentation; it is offered
+as a follow-up rather than done here. The launcher no
+longer exports `VLLM_V2_CUDAGRAPH_MEM_MIB`: nothing on 0.29 reads it, since the graph-reserve hunk retired when vLLM
+started profiling graph memory itself, so the export was a dead knob that every production boot warned about.
+
+`VLLM_PREFILL_ATTN` is registered in `envs.py` (`speed-knobs-envs.patch`) and read through `envs` at both
+sites in `flash_attn.py`; before, it was a raw `os.environ.get` and every boot with `PREFILL_ATTN` set printed
+"Unknown vLLM environment variable detected: VLLM_PREFILL_ATTN" (the 0.28 line still does).
+
+Adjusted for 0.29 API changes:
+
+- `ngram-chains`: the `propose` override takes and forwards `dp_sync` (new runner signature).
+- `hybrid-sw-block-promote`: `AttentionSpec.indexes_kv_by_block_stride` is gone; the "can this
+  layer pad" check now mirrors upstream's own pad branch, any non-MLA attention layer pads. Reading
+  the removed flag with a default of False refused every promotion, so the int4 profile padded the
+  five drafter layers at block 16 and could not fit 120k tokens; that is the failure to look for if
+  the promotion lines stop appearing at boot.
+
+KVarN (`kvarn/`, `CTX=huge`) is ported: `kvarn-0.29.0.patch` and `kvarn-v2-runner-0.29.0.patch`. The
+layout refactor removed the per-backend shape and stride hooks, so the backend now declares its layout
+(`LBHNC`: heads outside tokens within a block) and folds the runner's 4D per-layer view back into one
+tile per block and head with a `view`, so a wrong layout fails at the first KV update instead of
+returning wrong numbers (the first port declared `LBNHC` and did exactly that; the guard caught it).
+The old strided-view hunk and the four block-size hunks are retired; their reasons are in the patch
+preambles and in `kvarn/README.md`.
+
+On WSL2 the ttft/prefill/decode split of a single long request is unstable across builds while the request
+total is not: the same 25k prompt on the huge profile moved from 9.75 s to first token and 20 tok/s decode
+(0.29 without the backports) to 15.68 s and 78 tok/s (with them) with the total within 8 percent and equal
+quality, and the native 3090 shows neither the split nor the move (16.37 s vs 16.46 s, totals within 1 percent).
+Read totals and counters on WSL2; the split is where the first content byte lands relative to the work, not
+compute (read on the native 3090, 2026-09-13).
+
+Two layout strings one letter apart appear in 0.29 boot logs and both are right: the fast profile's FLASH_ATTN
+path logs "Using LBNHC KV cache layout", KVarN (`CTX=huge`) logs "Using LBHNC". The letters are the physical
+order of the cache tensor for that backend; 0.28 logged no layout line at all. The failure to watch for is the
+reverse, KVarN declaring LBNHC, which the guard refuses at the first KV update.
+
+## Acceptance (WSL2 4090, card 1, 2026-09-12)
+
+Same script on the 0.28.0 image and the 0.29.0 image, fresh cache volume per run.
+
+| profile | 0.28.0 | 0.29.0 |
+|---|---|---|
+| fast (dflash2 k=7, prefix caching): ppl / GSM8K n=100 | 10.8437 / 0.95 | 10.8437 / 0.95 |
+| fast depth 25k: prefill / decode tok/s | 2678 / 105.0 | 2685 / 103.2 |
+| fast depth 47k: prefill / decode tok/s | 2324 / 89.7 | 2323 / 97.9 |
+| long (mtp, align, prefix caching): prefix ladder and 60k/160k peaks | pass | pass, same numbers |
+| int4 (`kv_cache_dtype=int4_per_token_head`, 120k): KV tokens, mq3d oracle | 179,701, 8/8 | 173,134, 8/8 |
+| int4 depth 25k / 90k decode tok/s | 42.1 / 19.5 | 43.2 / 19.1 |
+| offload (12 GiB tier, mtp): served after eviction, tier guard | pass | pass |
+| huge (KVarN k4v2_g128, dflash2, 262k): block / KV tokens | 2176 / 268,169 | 2176 / 268,169 |
+| huge: ppl en / da, GSM8K n=100 | 10.7674 / 10.9097, 0.89 | 10.7691 / 10.9085, 0.93 |
+| huge: needle at 32k / 90k / 200k (thinking off) | see note | retrieved at all three |
+| huge: request time at 25k / 90k, WSL2 4090 (256 output tokens) | 30.2 s / 125.2 s | 22.4 s / 67.8 s |
+| huge on the native 3090: prefill / decode at 25k | 1206 / 74.5 | 1210 / 73.7 |
+| huge on the native 3090: prefill / decode at 90k | 1046 / 38.1 | 1047 / 38.6 |
+
+The 47k decode column is bimodal per prompt slice on both images (rows land near 89 or near 104), so
+the medians differ by draw, not by version; with prefix caching off both images read 102 to 104.
+
+The huge-context rows: both pins compute the same KV geometry on both cards, and the native 3090 shows no
+timing difference at all. On the WSL2 4090 the 0.28 boot delivers its first token about 16 s after the
+engine's prefill and then streams fast, while the 0.29 boot delivers it early and streams slower, finishing
+sooner at both depths with equal quality (three 0.28 boots across two images agree; the first stream delta
+is content on both pins). Not understood, WSL2-only, not a regression. The needle passcode is retrieved at
+32k, 90k and 200k on both pins (probe with thinking off).
+
+One knob worth knowing: 0.29 defaults `prefix_cache_retention_interval` to dense checkpointing for
+hybrid models with a draft model (the same behaviour 0.28 had). Setting it to 0 on this model halves
+the 47k prefill (1303 vs 2323 tok/s). Leave it at the default.
+
+## Porting the next pin (the procedure this port settled on)
+
+Three steps, in this order; skipping one is how this port lost most of a day.
+
+1. **Triage with a dry run.** Install the new wheel in a throwaway container, `patch --dry-run` every file in
+   `patches/` and `kvarn/` against it, and list three things: hunks that fail, hunks that apply with fuzz or a
+   large offset, and files that apply cleanly but sit in a part of the tree the release notes say moved. Only
+   the first list is visible; the other two are where the silent faults live (the block-promotion patch applied
+   cleanly on 0.29 and refused every promotion).
+2. **Read the commits, not the tree.** For every file on any of the three lists, `git log <old-tag>..<new-tag> --
+   vllm/<file>` in a clone of vLLM, then read the commit that broke the hunk. Re-derive the hunk from what
+   upstream changed and write the commit number into the patch preamble; retire a hunk only when a named commit
+   carries the behaviour, and look for the in-tree sibling that had to make the same move (TurboQuant's change
+   inside the layout refactor was the template for KVarN's). A hunk that regenerates cleanly against the new tree
+   without this step is a guess that happens to apply.
+3. **Boot with a control that must fail.** Build the image, run the acceptance profiles on two boxes against a
+   0.28 image built from the same fork commit (the merge base, so the pair differs by the pin alone), and include
+   one boot that is expected to go red (a deliberately wrong layout, a removed flag left in place). A green boot
+   after a red one is evidence; a green boot alone is a build log.
+
+What to read in the numbers: quality and geometry compare across versions; prefill compares by paired rows;
+decode does not at n=3 even on byte-identical prompts, because the continuations differ. Perplexity lanes that
+read the image's own source (the code corpus) never compare across pins. Prompts must be deterministic per row
+(no timestamps in the salt), or no two runs share an input.
+
+## Decisions made in this port, one line each (reject any by name)
+
+Every one of these is a judgment call, not a consequence of the pin. Each is reversible on its own.
+
+1. **KVarN keeps Huawei's knob names** (`KVARN_*`), registered under them; the `VLLM_KVARN_*` rename is a follow-up.
+2. **Every fork knob is registered and read through `envs`**, including nineteen in patches that predate this port
+   (the DFlash2 lookup and chain family, the split-KV `QMAX` and `BLOCK_M`, the Marlin int8 and tune knobs, the
+   align-mode checkpoint flag); the reads are one-for-one with the raw expressions they replace.
+3. **`VLLM_V2_CUDAGRAPH_MEM_MIB` is no longer exported by `single-user/start_qwen.sh`** on this line: nothing on
+   0.29 reads it since the graph-reserve hunk retired.
+4. **`hybrid-sw-block-promote` pads any non-MLA attention layer**, mirroring upstream's own pad branch, after the
+   removed `indexes_kv_by_block_stride` flag; the 0.28 decision (promote instead of pad) is kept.
+5. **`ngram-chains`' `propose` override forwards `dp_sync`** (the 0.29 runner signature).
+6. **KVarN declares `LBHNC`** and folds the runner's 4D view into tiles with a `view` that fails on a wrong layout.
+7. **The three KVarN commits sit last on the fork branch**, in the order `kvarn/install.sh` applies them, so the
+   exported files apply at `--fuzz 0`; `install.sh` stops on a rejected hunk instead of `|| true`.
+8. **`vllm-pr54282-draft-gumbel-salt` and `xgrammar-spec-terminated` are retired** (both in 0.29.0), and the
+   graph-memory reserve hunk of `hybrid-kv-groups-v2-cudagraph` and the int4 padded-page view hunk are dropped.
+9. **`--fuzz 0` everywhere** (Dockerfile, `check_vllm_series.sh`, `kvarn/install.sh`), so a drifted hunk fails the
+   build by name instead of landing by guess.
+10. **The two backports (#100, #101) are carried** as fork commits and exported patches, and retire when a pin
+    carries the upstream change.
+11. **Three patch preambles were cut to prose** (`dflash2-prewarm`, `dflash2-z-adaptive-emitted`,
+    `prefill-attn-int8` carried a whole diff a second time above the first file header).
+12. **The int64 casts from #91 and #109** are in the fork commits, not fixups on top.
+
