@@ -176,14 +176,15 @@ gets listed as an independent report instead of a table row, which is what
 happened to most of
 [docs/reproductions/](docs/reproductions/README.md#results-from-other-hardware).
 
-**Most wanted, in order:**
+**Most wanted, in order.** Several of these already have a thread with someone's
+hardware in it — check before you duplicate, and add to theirs if it matches:
 
 | | why it is worth your GPU hour |
 |---|---|
-| **sm80** — A100, A30, CMP 170HX | [#98](https://github.com/syv-ai/HyperQwen/issues/98) and [#72](https://github.com/syv-ai/HyperQwen/issues/72) are speculation faults diagnosed entirely from other people's logs. A few hours on one card probably closes both. |
 | **sm90** — H100, H200 | The only architecture here with no datapoint at all. |
-| **TP=4** | Two cards are measured ([#40](https://github.com/syv-ai/HyperQwen/issues/40)); four are not, and two cards are *slower* in aggregate than one, so the shape past that is a real question. |
-| **16 GB and 12 GB cards** | Decides whether smaller Qwen checkpoints are worth preparing, which is the top item on the roadmap. |
+| **sm80** — A100, A30, CMP 170HX | Two owners are mid-bisect on a speculation fault that only their cards produce ([#98](https://github.com/syv-ai/HyperQwen/issues/98), [#72](https://github.com/syv-ai/HyperQwen/issues/72)). A third sm80 box would separate the card from the build. |
+| **Four Ampere cards** | Four sm120 cards are measured ([#105](https://github.com/syv-ai/HyperQwen/issues/105)); nobody has run four 3090s, and two of them already give *less* aggregate throughput than one ([#135](https://github.com/syv-ai/HyperQwen/issues/135)). |
+| **12 GB cards, on the harness** | Two 3060s do serve this model ([#68](https://github.com/syv-ai/HyperQwen/issues/68)), reported with their owners' own clients — so the numbers cannot be set against the rows above. A harness run on that pair is most of what decides whether smaller Qwen checkpoints are worth preparing. |
 | **vLLM 0.29.0** ([#106](https://github.com/syv-ai/HyperQwen/issues/106)) | Ready on a fork, blocked on packaging details that need a machine to bisect on. |
 
 **What you get:** the run published in
