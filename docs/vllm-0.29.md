@@ -191,3 +191,151 @@ Every one of these is a judgment call, not a consequence of the pin. Each is rev
     `prefill-attn-int8` carried a whole diff a second time above the first file header).
 12. **The int64 casts from #91 and #109** are in the fork commits, not fixups on top.
 
+## 0.28 against 0.29 on every run setting (WSL2 4090, card 1, 2026-09-18)
+
+The README's five setups plus the production line, each booted on main's own CI image and on this branch's image, same box, same harness, one after the other in one session.
+
+
+Arms: 028 = `ghcr.io/syv-ai/hyperqwen:sha-684e927` (main at 684e927, vLLM 0.28.0); 029 = this branch at 7a6b00f (vLLM 0.29.0, before the memory-profile fix). GPU_UTIL=0.90 both.
+Per boot: bench/run_benchmarks.sh in the mode's own mode, run twice, second kept; bench/quality_battery.py --gsm-n 50; the bogus-knob control
+(one made-up `VLLM_` name exported: the unknown-variable count must be exactly 1 and name it). Decode = C x 1000 / mean TPOT for cohorts,
+C x 1000 / median TPOT for the 64-concurrent rows, as the script prints them. Same bench scripts and prompts (7a6b00f checkout) for both arms.
+
+### B, single default (dflash2, CTX=fast)
+
+- pool: 028 **66,692** tokens, 029 **77,872** tokens
+- boot to health: 028 231s (200); 029 228s (000), 152s (200)  (a 000 is a cold boot that failed the KV-memory check and was retried; see the note at the end)
+- unknown-variable lines (bogus knob named): 028 1 (1), 029 1 (1)
+- perplexity (windows): 028 en 10.7602 (11175) / da 10.9098 (13917); 029 en 10.7623 (11175) / da 10.9109 (13917)
+- GSM8K: 028 0.980 (n=50), 029 0.980 (n=50)
+
+| row | 028 decode tok/s | 029 decode tok/s | delta | 028 TTFT ms | 029 TTFT ms | 028 tok/step | 029 tok/step |
+|---|---|---|---|---|---|---|---|
+| cohort C1 real prompts T=default | 121.8 | 138.1 | +13.4% | 128.49 | 102.42 | 2.70 | 2.80 |
+| cohort C2 real prompts T=default | 234.5 | 264.2 | +12.7% | 212.45 | 183.68 | 2.75 | 2.78 |
+| cohort C4 real prompts T=default | 434.8 | 473.4 | +8.9% | 338.15 | 321.60 | 2.82 | 2.78 |
+| cohort C8 real prompts T=default | 666.1 | 782.0 | +17.4% | 764.43 | 644.46 | 2.78 | 2.80 |
+| cohort C1 real prompts T=0 | 140.6 | 150.8 | +7.3% | 121.29 | 118.76 | 2.85 | 2.96 |
+| cohort C2 real prompts T=0 | 269.5 | 286.9 | +6.5% | 189.95 | 193.82 | 2.89 | 2.99 |
+| cohort C4 real prompts T=0 | 476.2 | 486.6 | +2.2% | 261.10 | 280.32 | 2.84 | 2.81 |
+| cohort C8 real prompts T=0 | 738.7 | 810.5 | +9.7% | 693.18 | 755.35 | 2.81 | 2.87 |
+
+### C, reproduction (DFLASH_TOKENS=15)
+
+- pool: 028 **66,692** tokens, 029 **77,872** tokens
+- boot to health: 028 148s (200); 029 148s (200)
+- unknown-variable lines (bogus knob named): 028 1 (1), 029 1 (1)
+- perplexity (windows): 028 en 10.7602 (11175) / da 10.9098 (13917); 029 en 10.7623 (11175) / da 10.9109 (13917)
+- GSM8K: 028 0.980 (n=50), 029 0.980 (n=50)
+
+| row | 028 decode tok/s | 029 decode tok/s | delta | 028 TTFT ms | 029 TTFT ms | 028 tok/step | 029 tok/step |
+|---|---|---|---|---|---|---|---|
+| cohort C1 real prompts T=default | 127.4 | 138.3 | +8.6% | 127.70 | 101.58 | 2.86 | 2.80 |
+| cohort C2 real prompts T=default | 241.0 | 264.2 | +9.6% | 197.83 | 169.36 | 2.84 | 2.78 |
+| cohort C4 real prompts T=default | 441.0 | 473.4 | +7.3% | 328.70 | 277.79 | 2.85 | 2.78 |
+| cohort C8 real prompts T=default | 670.0 | 788.2 | +17.6% | 763.10 | 738.74 | 2.76 | 2.85 |
+| cohort C1 real prompts T=0 | 141.0 | 150.8 | +7.0% | 105.08 | 123.18 | 2.86 | 2.96 |
+| cohort C2 real prompts T=0 | 263.5 | 287.4 | +9.1% | 203.41 | 200.15 | 2.83 | 2.99 |
+| cohort C4 real prompts T=0 | 468.9 | 486.6 | +3.8% | 257.24 | 323.00 | 2.78 | 2.81 |
+| cohort C8 real prompts T=0 | 727.3 | 810.5 | +11.4% | 719.08 | 705.73 | 2.77 | 2.87 |
+
+### M, Mads's production line (dflash2 fast, prefix cache, k=15, INT8_ACT, PREFILL_ATTN int8)
+
+- pool: 028 **57,669** tokens, 029 **57,669** tokens
+- boot to health: 028 356s (200); 029 299s (200)
+- unknown-variable lines (bogus knob named): 028 1 (1), 029 1 (1)
+- perplexity (windows): 028 en 11.0833 (11175) / da 11.3487 (13917); 029 en 11.0252 (11175) / da 11.3427 (13917)
+- GSM8K: 028 0.960 (n=50), 029 0.920 (n=50)
+
+| row | 028 decode tok/s | 029 decode tok/s | delta | 028 TTFT ms | 029 TTFT ms | 028 tok/step | 029 tok/step |
+|---|---|---|---|---|---|---|---|
+| cohort C1 real prompts T=default | 144.1 | 141.6 | -1.7% | 104.45 | 109.86 | 3.22 | 3.15 |
+| cohort C2 real prompts T=default | 269.5 | 281.7 | +4.5% | 173.37 | 171.02 | 3.16 | 3.36 |
+| cohort C4 real prompts T=default | 509.6 | 537.6 | +5.5% | 2360.67 | 2188.06 | 3.21 | 3.37 |
+| cohort C8 real prompts T=default | 993.8 | 1040.3 | +4.7% | 7338.54 | 7112.88 | 3.08 | 3.26 |
+| cohort C1 real prompts T=0 | 157.7 | 163.1 | +3.4% | 102.84 | 103.72 | 3.54 | 3.61 |
+| cohort C2 real prompts T=0 | 298.5 | 306.7 | +2.7% | 174.72 | 178.28 | 3.51 | 3.59 |
+| cohort C4 real prompts T=0 | 561.0 | 586.5 | +4.5% | 2238.36 | 1891.32 | 3.48 | 3.67 |
+| cohort C8 real prompts T=0 | 1125.2 | 1151.1 | +2.3% | 6972.51 | 6462.25 | 3.48 | 3.61 |
+
+### D, long context (SPEC=mtp CTX=long)
+
+- pool: 028 **163,010** tokens, 029 **161,479** tokens
+- boot to health: 028 226s (200); 029 246s (200)
+- unknown-variable lines (bogus knob named): 028 1 (1), 029 1 (1)
+- perplexity (windows): 028 en 10.7666 (11175) / da 10.9060 (13917); 029 en 10.7635 (11175) / da 10.9108 (13917)
+- GSM8K: 028 0.960 (n=50), 029 0.980 (n=50)
+
+| row | 028 decode tok/s | 029 decode tok/s | delta | 028 TTFT ms | 029 TTFT ms | 028 tok/step | 029 tok/step |
+|---|---|---|---|---|---|---|---|
+| cohort C1 real prompts T=default | 94.4 | 101.8 | +7.8% | 128.18 | 142.17 | 2.57 | 2.61 |
+| cohort C2 real prompts T=default | 192.7 | 203.9 | +5.8% | 221.26 | 204.78 | 2.60 | 2.56 |
+| cohort C4 real prompts T=default | 358.4 | 385.7 | +7.6% | 299.73 | 301.63 | 2.60 | 2.57 |
+| cohort C8 real prompts T=default | 696.3 | 698.7 | +0.3% | 696.68 | 817.44 | 2.69 | 2.51 |
+| cohort C1 real prompts T=0 | 103.6 | 105.7 | +2.0% | 130.66 | 138.14 | 2.61 | 2.64 |
+| cohort C2 real prompts T=0 | 206.2 | 209.9 | +1.8% | 217.71 | 184.83 | 2.58 | 2.60 |
+| cohort C4 real prompts T=0 | 406.1 | 402.8 | -0.8% | 303.66 | 282.55 | 2.72 | 2.66 |
+| cohort C8 real prompts T=0 | 730.6 | 732.6 | +0.3% | 794.27 | 659.60 | 2.64 | 2.60 |
+
+### E, huge context (CTX=huge, KVarN)
+
+- pool: 028 **221,238** tokens, 029 **281,415** tokens
+- boot to health: 028 283s (200); 029 286s (000), 148s (200)  (a 000 is a cold boot that failed the KV-memory check and was retried; see the note at the end)
+- unknown-variable lines (bogus knob named): 028 1 (1), 029 1 (1)
+- perplexity (windows): 028 en 10.7612 (11175) / da 10.9105 (13917); 029 en 10.7612 (11175) / da 10.9105 (13917)
+- GSM8K: 028 0.940 (n=50), 029 0.960 (n=50)
+
+| row | 028 decode tok/s | 029 decode tok/s | delta | 028 TTFT ms | 029 TTFT ms | 028 tok/step | 029 tok/step |
+|---|---|---|---|---|---|---|---|
+| cohort C1 real prompts T=default | 91.5 | 107.2 | +17.2% | 140.69 | 135.19 | 2.55 | 2.56 |
+| cohort C2 real prompts T=default | 182.0 | 202.8 | +11.4% | 216.89 | 227.25 | 2.54 | 2.44 |
+| cohort C4 real prompts T=default | 337.3 | 377.4 | +11.9% | 304.50 | 356.52 | 2.59 | 2.54 |
+| cohort C8 real prompts T=default | 618.7 | 627.9 | +1.5% | 814.10 | 689.88 | 2.66 | 2.41 |
+| cohort C1 real prompts T=0 | 100.9 | 110.9 | +9.9% | 135.11 | 140.94 | 2.60 | 2.58 |
+| cohort C2 real prompts T=0 | 196.3 | 211.9 | +7.9% | 213.72 | 230.39 | 2.53 | 2.51 |
+| cohort C4 real prompts T=0 | 367.3 | 389.9 | +6.2% | 336.51 | 338.38 | 2.65 | 2.59 |
+| cohort C8 real prompts T=0 | 643.1 | 693.8 | +7.9% | 738.92 | 729.78 | 2.58 | 2.62 |
+
+### A, batch mode
+
+- pool: 028 **152,319** tokens, 029 **168,556** tokens
+- boot to health: 028 283s (200); 029 252s (200)
+- unknown-variable lines (bogus knob named): 028 1 (1), 029 1 (1)
+- perplexity (windows): 028 en 10.8609 (11175) / da 11.0488 (13917); 029 en 10.8714 (11175) / da 11.0813 (13917)
+- GSM8K: 028 0.940 (n=50), 029 0.940 (n=50)
+
+| row | 028 decode tok/s | 029 decode tok/s | delta | 028 TTFT ms | 029 TTFT ms | 028 tok/step | 029 tok/step |
+|---|---|---|---|---|---|---|---|
+| 64conc 128in/512out | 1976 | 1904 | -3.6% | 5777.21 | 3780.91 | - | - |
+| 64conc 256in/256out | 1634 | 1548 | -5.3% | 4169.22 | 3062.46 | - | - |
+| cohort C1 real prompts T=default | 55.0 | 54.1 | -1.6% | 93.79 | 94.60 | - | - |
+| cohort C2 real prompts T=default | 103.0 | 99.9 | -3.0% | 208.77 | 195.74 | - | - |
+| cohort C4 real prompts T=default | 200.8 | 194.1 | -3.3% | 334.95 | 279.56 | - | - |
+| cohort C8 real prompts T=default | 402.8 | 397.6 | -1.3% | 521.50 | 542.19 | - | - |
+
+### Notes read from the logs
+
+- Two 029 first boots (B default, E huge) exited with vLLM's KV-memory check on a fresh cache volume (cold torch compile): B needed 4.76 GiB for max_model_len 65536 against 4.73 available (equivalent utilization 0.8522); E read available KV memory as -1.86 GiB (equivalent 0.6733). The warm retry on the same volume passed at the same equivalent utilization. The 028 arms booted cold on equally fresh volumes and passed. The fix is `memory-profile-after-warmup.patch`; the falsifier rows are below.
+- The code perplexity row is not shown: bench/quality_battery.py globs its code corpus from the installed vllm/v1/core, so each arm perplexed its own engine source (7586 windows on 0.28, 7525 on 0.29). The corpus is pinned to one tree for later runs. en and da are fixed parquet corpora and agree to three decimals on every pair.
+- The quality battery could not write its result json because the data mount was read-only (OSError in the log); the printed PPL and GSM8K lines are the record.
+- No VRAM column: Windows nvidia-smi does not see the WSL2 container; the engine's own memory lines are the record.
+
+## The cold-boot falsifier for `memory-profile-after-warmup` (2026-09-18)
+
+Same image with and without the patch, `GPU_UTIL=0.90`, "cold" = a fresh cache volume (torch compile from scratch), "warm" = the same volume booted again.
+
+| box | profile | torch.compile | available KV | pool | result |
+|---|---|---|---|---|---|
+| native 3090 | B default, cold, no fix | 44.00 s | 4.42 GiB | none | refused at 207 s |
+| native 3090 | B default, warm, no fix | 0.73 s | 5.37 GiB | 73,631 | health at 86 s |
+| native 3090 | B default, cold, with fix | 43.98 s | 5.37 GiB | 73,631 | health at 221 s |
+| native 3090 | B default, warm, with fix | 0.66 s | 5.37 GiB | 73,631 | health at 80 s |
+| WSL2 4090 | B default, cold, no fix | 40.79 s | 4.76 GiB (4.73 after alignment, 4.76 needed) | none | refused at 228 s |
+| WSL2 4090 | B default, cold, with fix | 40.79 s | 5.68 GiB | 77,872 | health at 242 s |
+| WSL2 4090 | B default, warm, with fix | 0.00 s | 5.68 GiB | 77,872 | health at 126 s |
+| WSL2 4090 | E huge, cold, no fix | 102.58 s | -1.86 GiB | none | refused at 286 s |
+| WSL2 4090 | E huge, cold, with fix | 104.24 s | -0.97 GiB | none | refused at 280 s |
+| WSL2 4090 | E huge, warm (campaign retry, no fix) | 0.00 s | positive | 281,415 | health at 148 s |
+
+On the default profile the fix makes the cold boot measure exactly what the warm boot measures, on both boxes: same available KV, same pool, same equivalent utilization (0.8514 on the 3090 in all four rows, 0.8522 on the 4090; that line never distinguished a failure from a pass on either box, so it is not the explanation). On `CTX=huge` the fix recovers 0.89 GiB of the cold-boot shortfall and the boot still fails on the WSL2 4090 at `GPU_UTIL=0.90` (one box, one try); the KVarN kernels' first JIT (104 s) leaves more behind than the compile pass alone accounts for. The warm boot on that profile passes. What the falsifier shows is that the counted window no longer includes compiler scratch; it does not show that no profile can exhaust memory on a cold boot. Open: a first-boot path for `CTX=huge` on a fresh volume (a lower first-boot `GPU_UTIL`, or a warmup of the KVarN kernels before profiling).
+
