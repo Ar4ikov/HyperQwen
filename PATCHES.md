@@ -10,7 +10,7 @@ them in the order of `patches/series` onto the installed vLLM wheel; `verify.sh`
 - **own**: a fix to a feature this repo introduced. Rides with that feature.
 
 Cut against: the pin the current hunks were generated on. Every file is exported from its commit on the fork
-branch (`cpuchip/vllm`, v0.29.0 + one commit per row, in series order, subject `[qwen38] <topic>`): **`qwen38/0.29` @ `337efb79f`** for every row except three, and **`qwen38/0.29-hq` @ `03b5c4259`** for `spec-decode-attn` (`711f8ac83`), `speed-knobs-envs` (`323e89b2f`) and `triton-spec-attn-fp8-kv` (`83c9a589c`), which were re-cut for the #114 registration moves on a new branch so the original export point stays unrewritten,
+branch (`cpuchip/vllm`, v0.29.0 + one commit per row, in series order, subject `[qwen38] <topic>`): **`qwen38/0.29` @ `337efb79f`** for every row except four, and **`qwen38/0.29-hq` @ `bf29fa109`** for `spec-decode-attn` (`711f8ac83`), `speed-knobs-envs` (`323e89b2f`), `triton-spec-attn-fp8-kv` (`83c9a589c`) — re-cut for the #114 registration moves on a new branch so the original export point stays unrewritten — and `memory-profile-after-warmup` (`bf29fa109`), cut there after that branch had already diverged,
 so the series applies to the 0.29.0 tree with exact context; the Dockerfile, `patches/check_vllm_series.sh`,
 `kvarn/install.sh` and `verify.sh` apply and check with `--fuzz 0`, and a hunk whose context has moved fails the
 build by name instead of landing by guess. Regenerate a file with `bash scripts/export-patch.sh <fork checkout>
@@ -45,6 +45,7 @@ build by name instead of landing by guess. Regenerate a file with `bash scripts/
 | engine-completion-log | feature | one log line per completed engine step, so a stalled core is visible without scraping stats gaps | upstream PR (syv-ai #94/#110) | 0.29.0 | upstreamed |
 | engine-stall-sentinel | feature | daemon thread warns once per episode when no step completes for `VLLM_ENGINE_STALL_SENTINEL_S` while requests are live | upstream PR (syv-ai #94/#110) | 0.29.0, re-cut for the port | upstreamed |
 | topk-honour-flashinfer-sampler-switch | fix | `VLLM_USE_FLASHINFER_SAMPLER=0` also covers the drafter's candidate top-k, which `_flashinfer_topk()` did not gate | none yet (syv-ai #106 B1) | 0.29.0 | upstream takes it |
+| memory-profile-after-warmup | fix | run `profile_run` once before the memory-profiling window, synchronize and empty the allocator cache, so a cold compile cache's scratch is not counted as transient peak and the KV cache the warm boot grants is not refused | none yet | 0.29.0 | upstream profiles after warmup |
 | triton-spec-attn-fp8-kv | feature | split-KV verify attention on the per-tensor fp8 KV cache (TRITON_ATTN, sm89+); registers `VLLM_SPEC_ATTN_DEBUG` | none | 0.29.0, re-cut for the port | upstreamed |
 | spec-decode-int4-kv-mq3d | feature | multi-query 3D int4 verify path | none | 0.29.0 | rides with int4-kv-per-token-head |
 | spec-decode-int8-kv | feature | split-KV verify attention over an int8 per-token-head cache | none | 0.29.0 | rides with spec-decode-attn |
