@@ -10,7 +10,7 @@ them in the order of `patches/series` onto the installed vLLM wheel; `verify.sh`
 - **own**: a fix to a feature this repo introduced. Rides with that feature.
 
 Cut against: the pin the current hunks were generated on. Every file is exported from its commit on the fork
-branch (`cpuchip/vllm`, v0.29.0 + one commit per row, in series order, subject `[qwen38] <topic>`): **`qwen38/0.29` @ `337efb79f`** for every row except four, and **`qwen38/0.29-hq` @ `500e6ed3a`** for `spec-decode-attn` (`711f8ac83`), `speed-knobs-envs` (`323e89b2f`), `triton-spec-attn-fp8-kv` (`83c9a589c`) — re-cut for the #114 registration moves on a new branch so the original export point stays unrewritten — and `memory-profile-after-warmup` (`bf29fa109`), cut there after that branch had already diverged,
+branch (`cpuchip/vllm`, v0.29.0 + one commit per row, in series order, subject `[qwen38] <topic>`): **`qwen38/0.29` @ `337efb79f`** for every row except four, and **`qwen38/0.29-hq` @ `4879f94f3`** for `spec-decode-attn` (`711f8ac83`), `speed-knobs-envs` (`323e89b2f`), `triton-spec-attn-fp8-kv` (`83c9a589c`) — re-cut for the #114 registration moves on a new branch so the original export point stays unrewritten — and `memory-profile-after-warmup` (`bf29fa109`), cut there after that branch had already diverged,
 so the series applies to the 0.29.0 tree with exact context; the Dockerfile, `patches/check_vllm_series.sh`,
 `kvarn/install.sh` and `verify.sh` apply and check with `--fuzz 0`, and a hunk whose context has moved fails the
 build by name instead of landing by guess. Regenerate a file with `bash scripts/export-patch.sh <fork checkout>
