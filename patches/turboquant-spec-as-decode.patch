@@ -1,5 +1,5 @@
---- a/vllm/v1/attention/backends/turboquant_attn.py
-+++ b/vllm/v1/attention/backends/turboquant_attn.py
+--- a/v1/attention/backends/turboquant_attn.py
++++ b/v1/attention/backends/turboquant_attn.py
 @@ -211,6 +211,13 @@
      # without per-step D2H syncs.
      query_start_loc_cpu: torch.Tensor | None = None
