@@ -47,7 +47,7 @@ DFlash2 needs its pool pinned lower than the fast variant's default for the same
 the philbert440 export does (15.7 GiB of weights after requantization against 14.71), and
 a 15-token verify block needs `DFLASH_MAX_LEN=36864` on top. The full table with the int8
 and fast-variant rows, and the container that ships all four checkpoints:
-[Ar4ikov/vllm-qwen-boost](https://github.com/Ar4ikov/vllm-qwen-boost).
+[Ar4ikov/vllm-hyprfastQwen](https://github.com/Ar4ikov/vllm-hyprfastQwen).
 
 **Any other export**, including single-shard and asymmetric-AWQ ones the base
 model's three `quant_*.py` scripts cannot open, goes through the streaming
