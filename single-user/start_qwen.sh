@@ -177,7 +177,15 @@ USER_MAX_LEN=${MAX_LEN:-}
 if [ "$CTX" = "fast" ]; then
   MAX_LEN=${MAX_LEN:-65536}
   DRAFT_TOKENS=${DRAFT_TOKENS:-4}
-  ATTN_ARGS="--attention-backend FLASH_ATTN --kv-cache-dtype bfloat16"
+  if [ -n "${KV_DTYPE:-}" ]; then
+    # KV_DTYPE=turboquant_4bit_nc|turboquant_k8v4|...: a quantized cache that brings its
+    # own attention backend. No explicit --attention-backend, so vLLM picks TURBOQUANT
+    # for the quantized layers and FlashAttention for the layers the skip list keeps in
+    # bf16: the drafter's sliding-window layers (TurboQuant has no window mask).
+    ATTN_ARGS="--kv-cache-dtype $KV_DTYPE --kv-cache-dtype-skip-layers sliding_window"
+  else
+    ATTN_ARGS="--attention-backend FLASH_ATTN --kv-cache-dtype bfloat16"
+  fi
   export VLLM_SPEC_DECODE_ATTN=${SPEC_ATTN:-1}
 elif [ "$CTX" = "huge" ]; then
   MAX_LEN=${MAX_LEN:-200000}
