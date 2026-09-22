@@ -78,13 +78,15 @@ for f in os.listdir(S):
     if f.endswith(".safetensors") and ".bak" not in f and f != shard \
             and f != "model_extra_tensors.safetensors" and not os.path.exists(D + f):
         os.link(S + f, D + f)
-for f in ["tokenizer.json", "mtp_draft_vocab_ids.pt"]:
+if os.path.exists(S + "tokenizer.json") and not os.path.exists(D + "tokenizer.json"):
+    os.link(S + "tokenizer.json", D + "tokenizer.json")
+# copied, not linked: prepare/build_draft_vocab.py rewrites both in the variant -- the extras
+# with save_file (in place on safetensors <= 0.7) and the ids with torch.save (in place on
+# every torch: it truncates the open inode) -- so through a hardlink each rewrote the source's
+# copy too, and the source's draft head and its id list stopped matching
+for f in ["model_extra_tensors.safetensors", "mtp_draft_vocab_ids.pt"]:
     if os.path.exists(S + f) and not os.path.exists(D + f):
-        os.link(S + f, D + f)
-# copied, not linked: prepare/build_draft_vocab.py rewrites it in the variant with save_file,
-# which safetensors <= 0.7 does in place, so through a hardlink it rewrote the source's too
-if os.path.exists(S + "model_extra_tensors.safetensors") and not os.path.exists(D + "model_extra_tensors.safetensors"):
-    shutil.copy(S + "model_extra_tensors.safetensors", D + "model_extra_tensors.safetensors")
+        shutil.copy(S + f, D + f)
 for f in ["chat_template.jinja", "generation_config.json", "processor_config.json", "quantization_config.json",
           "tokenizer_config.json", "preprocessor_config.json", "video_preprocessor_config.json", "recipe.yaml"]:
     if os.path.exists(S + f):
