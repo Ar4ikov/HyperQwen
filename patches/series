@@ -51,3 +51,5 @@ topk-honour-flashinfer-sampler-switch.patch
 memory-profile-after-warmup.patch
 cudagraph-memory-from-allocator.patch
 marlin-int8-asym-zp.patch
+turboquant-spec-as-decode.patch
+turboquant-skip-layers-by-name.patch

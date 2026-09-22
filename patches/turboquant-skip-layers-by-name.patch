@@ -1,0 +1,15 @@
+--- a/vllm/engine/arg_utils.py
++++ b/vllm/engine/arg_utils.py
+@@ -2117,8 +2117,11 @@
+ 
+             boundary = TurboQuantConfig.get_boundary_skip_layers(model_config)
+             existing = set(cache_config.kv_cache_dtype_skip_layers)
++            # the skip list takes layer indices or attention type names
++            # ("sliding_window"), so do not sort it as integers
+             cache_config.kv_cache_dtype_skip_layers = sorted(
+-                existing | set(boundary), key=int
++                existing | set(boundary),
++                key=lambda s: (0, int(s)) if s.isdigit() else (1, s),
+             )
+ 
+         ray_runtime_env = None
