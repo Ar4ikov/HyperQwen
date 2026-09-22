@@ -57,6 +57,7 @@ build by name instead of landing by guess. Regenerate a file with `bash scripts/
 | prefill-attn-int8 | feature | int8-QK Triton prefill attention for head_dim 256 | none | 0.29.0 | upstreamed |
 | vision-tower-cpu-offload | local | Qwen3 vision tower bulk weights in host RAM | none | 0.29.0 | stays |
 | vllm-pr50021-gdn-spec-bounds | backport | bounds checks in GDN/KDA spec-decode state lookups | vllm #50021 (open) | 0.29.0 | the pin that carries #50021 |
+| marlin-int8-asym-zp | fix | the Marlin int8-activation path (`INT8_ACT=int8`) accepts zero-point `uint4` weights, so asymmetric AWQ exports (compressed-tensors `symmetric: false`) run W4A8 like the symmetric ones; the `kS8 x kU4` kernel is already compiled, only two asserts refused it | none yet | 0.29.0 (hunks identical on 0.28.0) | upstream PR |
 | kvarn/kvarn-0.29.0 | feature | KVarN cache dtypes, quant mode, backend registration, page size | none (KVarN is Huawei CSL's, Apache-2.0) | 0.29.0; attn_utils view hunk retired | upstreamed |
 | kvarn/kvarn-v2-runner-0.29.0 | own | KVarN with the V2 runner and DFlash2 (SW groups, Mamba block index, selector guards) | none | 0.29.0; kv_cache_utils hunks retired | rides with KVarN |
 

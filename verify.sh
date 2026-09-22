@@ -114,6 +114,41 @@ def ok(m): print("  PASS ", m)
 def fail(m):
     global F
     print("  FAIL ", m); F += 1
+# Zero points: a pack-quantized group with symmetric=false (AWQ-style exports) needs a
+# weight_zero_point beside every weight_packed it covers, and a symmetric group must not
+# carry one -- vLLM resolves the group per module and loads exactly the tensors that
+# group implies, so a mismatch dies at load far from the cause (the case
+# prepare/quant_heads_stream.py normalizes for the head groups it writes). Resolve the
+# group per packed module the way compressed-tensors does: the first regex target that
+# matches the module path wins, else the bare "Linear" group.
+import re
+def _group_of(mod):
+    linear = None
+    for gname, g in groups.items():
+        for t in g.get("targets", []):
+            if t.startswith("re:"):
+                if re.match(t[3:], mod): return gname, g
+            elif t == "Linear" and linear is None: linear = (gname, g)
+    return linear
+zp_bad = []
+for k in idx:
+    if not k.endswith(".weight_packed"): continue
+    mod = k[:-len(".weight_packed")]
+    hit = _group_of(mod)
+    if hit is None: continue
+    gname, g = hit
+    asym = (g.get("weights") or {}).get("symmetric") is False
+    has_zp = mod + ".weight_zero_point" in idx
+    if asym != has_zp: zp_bad.append((mod, gname, asym, has_zp))
+n_asym = sum(1 for g in groups.values() if (g.get("weights") or {}).get("symmetric") is False)
+if zp_bad:
+    for mod, gname, asym, has_zp in zp_bad[:5]:
+        fail(f"{mod}: group {gname} says symmetric={not asym} but weight_zero_point is {'present' if has_zp else 'missing'} (asymmetric bodies: prepare/quant_heads_stream.py writes the head groups symmetric)")
+    if len(zp_bad) > 5: fail(f"... {len(zp_bad)} packed modules with a zero-point/config mismatch in total")
+elif n_asym:
+    ok(f"zero points consistent with config_groups ({n_asym} asymmetric group(s): INT8_ACT=int8 needs patches/marlin-int8-asym-zp.patch, which this series carries)")
+else:
+    ok("zero points consistent with config_groups (symmetric body)")
 # lm_head requantized to int8 (prepare/quant_lm_head.py), or int4-GPTQ as the
 # drafter/ pipeline writes it (the shipped ...-AutoRound-fast layout). The width
 # is whatever config declares; what must hold is the packed geometry it implies,
