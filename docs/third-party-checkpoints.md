@@ -39,6 +39,9 @@ default sampling, second harness run kept:
 | `SPEC=mtp CTX=fast` | 107.4 tok/s | 2.71 | 70,933 |
 | `SPEC=dflash2 CTX=fast KV_MEM=4300000000 DFLASH_MAX_LEN=49152` | 123.0 | 3.15 | 49,662 |
 | `SPEC=mtp CTX=long MAX_LEN=100000` | 84.4 | 2.58 | 164,705 |
+| the production line (`DFLASH_TOKENS=15 INT8_ACT=int8 PREFILL_ATTN=int8`, `DFLASH_MAX_LEN=36864`) | 117.5 (TTFT 96 ms) | 3.12 | 37,834 |
+| `-fast` sibling, `SPEC=dflash2 CTX=fast KV_MEM=4600000000 DFLASH_MAX_LEN=49152` | **135.9** | 3.29 | 53,233 |
+| batch mode as shipped, `GPU_UTIL=0.94 MAX_LEN=100000` | 1,169 tok/s decode at 64 concurrent | | 215,267 |
 
 DFlash2 needs its pool pinned lower than the fast variant's default for the same reason
 the philbert440 export does (15.7 GiB of weights after requantization against 14.71), and
