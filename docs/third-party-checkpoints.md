@@ -18,6 +18,34 @@ CTX=huge` on a 3090 with coherent output and a 45k-context needle retrieved,
 and a second tester confirmed `SPEC=mtp` works. Community-built and
 community-verified; not benchmarked on this repo's reference box.
 
+### Ready-made, asymmetric AWQ with the vision tower
+
+[Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen](https://huggingface.co/Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen)
+and
+[Ar4ikov/Qwen3.8-27B-AWQ-W4A16-ASYM-HyperQwen](https://huggingface.co/Ar4ikov/Qwen3.8-27B-AWQ-W4A16-ASYM-HyperQwen)
+are the llm-compressor AWQ exports of the uncensored finetune and of the base model --
+int4 asymmetric g128 *with zero points*, the vision tower, the MTP head and the SSM gate
+projections in bf16 -- after `prepare/quant_heads_stream.py` and `build_draft_vocab.py`,
+so they serve without preparation; the `-fast` siblings carry the int4-GPTQ `lm_head`
+from `drafter/gptq_lm_head.py` (calibrated on 600k teacher-forced UltraChat tokens:
+KL 0.0070 RTN -> 0.0024 GPTQ). Asymmetric bodies need
+`patches/marlin-int8-asym-zp.patch` for `INT8_ACT=int8` (batch mode, the production
+line): without it vLLM refuses the zero-point weights on the int8 path at load. Measured
+on an RTX 3090 at 350 W with `VISION=1` (tower offloaded to host RAM), C1 at the model's
+default sampling, second harness run kept:
+
+| | C1 | tok/step | pool |
+|---|---|---|---|
+| `SPEC=mtp CTX=fast` | 107.4 tok/s | 2.71 | 70,933 |
+| `SPEC=dflash2 CTX=fast KV_MEM=4300000000 DFLASH_MAX_LEN=49152` | 123.0 | 3.15 | 49,662 |
+| `SPEC=mtp CTX=long MAX_LEN=100000` | 84.4 | 2.58 | 164,705 |
+
+DFlash2 needs its pool pinned lower than the fast variant's default for the same reason
+the philbert440 export does (15.7 GiB of weights after requantization against 14.71), and
+a 15-token verify block needs `DFLASH_MAX_LEN=36864` on top. The full table with the int8
+and fast-variant rows, and the container that ships all four checkpoints:
+[Ar4ikov/vllm-qwen-boost](https://github.com/Ar4ikov/vllm-qwen-boost).
+
 **Any other export**, including single-shard and asymmetric-AWQ ones the base
 model's three `quant_*.py` scripts cannot open, goes through the streaming
 requant (contributed in
